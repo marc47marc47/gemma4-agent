@@ -1,0 +1,6 @@
+[submodule "llama.cpp"]
+	path = llama.cpp
+	url = https://github.com/ggml-org/llama.cpp.git
+[submodule "opencode"]
+	path = opencode
+	url = https://github.com/anomalyco/opencode.git

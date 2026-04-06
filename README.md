@@ -22,7 +22,42 @@ A portable coding agent based on Google Gemma 4, similar to Claude Code / OpenAI
 
 ## Quick Start
 
-### 1. Build llama.cpp
+### 1. Bootstrap install
+
+#### macOS / Linux / Git Bash
+
+```bash
+./bootstrap.sh
+```
+
+#### Windows PowerShell
+
+```powershell
+.\bootstrap.ps1
+```
+
+The bootstrap installer will:
+- install Node.js if needed
+- download prebuilt `llama.cpp` binaries
+- download the Gemma 4 model
+- install OpenCode
+- create a `gemma4-agent` launcher in `~/.local/bin`
+
+If a downloaded `llama.cpp` archive already exists in the cache, bootstrap will skip the download and extract it directly.
+
+After installation, start the agent with:
+
+```bash
+gemma4-agent
+```
+
+On Windows, the launcher shim is created at:
+
+```text
+%USERPROFILE%\.local\bin\gemma4-agent.cmd
+```
+
+### 2. Developer setup: build llama.cpp manually
 
 ```bash
 cd llama.cpp
@@ -44,13 +79,13 @@ cmake -B build -DLLAMA_CURL=ON
 cmake --build build --config Release
 ```
 
-### 2. Install OpenCode
+### 3. Install OpenCode
 
 ```bash
 npm i -g opencode-ai
 ```
 
-### 3. Install dependencies and start
+### 4. Install dependencies and start
 
 ```bash
 npm install
@@ -64,6 +99,12 @@ On first run, the Gemma 4 E4B model will be downloaded automatically (about 5.4G
 ```bash
 # Start the agent
 npm run dev
+
+# Use the default Unsloth GGUF
+npm run dev
+
+# Use the Bartowski GGUF instead
+npm run dev -- --model-source bartowski
 
 # Download the model only
 npm run dev -- --download-only

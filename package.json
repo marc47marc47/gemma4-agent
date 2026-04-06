@@ -7,19 +7,47 @@
   "bin": {
     "gemma4-agent": "dist/launcher.js"
   },
+  "files": [
+    "dist",
+    "opencode.json",
+    "bootstrap.sh",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/launcher.js",
     "dev": "tsx src/launcher.ts",
-    "pkg:win": "pkg dist/launcher.js -t node20-win-x64 -o dist/gemma4-agent-win.exe",
-    "pkg:mac": "pkg dist/launcher.js -t node20-macos-arm64 -o dist/gemma4-agent-mac",
-    "pkg:linux": "pkg dist/launcher.js -t node20-linux-x64 -o dist/gemma4-agent-linux"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "release": "npm run build && npm publish",
+    "pkg:all": "npm run pkg:win && npm run pkg:mac && npm run pkg:linux",
+    "pkg:win": "pkg dist/launcher.js -t node20-win-x64 -o release/gemma4-agent-win-x64.exe",
+    "pkg:mac-arm": "pkg dist/launcher.js -t node20-macos-arm64 -o release/gemma4-agent-macos-arm64",
+    "pkg:mac-x64": "pkg dist/launcher.js -t node20-macos-x64 -o release/gemma4-agent-macos-x64",
+    "pkg:mac": "npm run pkg:mac-arm",
+    "pkg:linux": "pkg dist/launcher.js -t node20-linux-x64 -o release/gemma4-agent-linux-x64"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/gemma4-agent.git"
+  },
+  "keywords": [
+    "gemma",
+    "gemma4",
+    "coding-agent",
+    "ai",
+    "llm",
+    "llama.cpp",
+    "opencode",
+    "cli"
+  ],
+  "author": "",
+  "homepage": "https://github.com/user/gemma4-agent#readme",
+  "bugs": {
+    "url": "https://github.com/user/gemma4-agent/issues"
   },
   "dependencies": {
-    "@huggingface/hub": "^2.11.0",
-    "chalk": "^5.3.0",
-    "commander": "^12.0.0",
-    "ora": "^8.0.0"
+    "commander": "^12.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

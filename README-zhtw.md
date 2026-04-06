@@ -20,7 +20,42 @@
 
 ## 快速開始
 
-### 1. 編譯 llama.cpp
+### 1. 使用 bootstrap 安裝
+
+#### macOS / Linux / Git Bash
+
+```bash
+./bootstrap.sh
+```
+
+#### Windows PowerShell
+
+```powershell
+.\bootstrap.ps1
+```
+
+bootstrap 安裝程式會自動：
+- 安裝 Node.js（若尚未安裝）
+- 下載預編譯的 `llama.cpp` binaries
+- 下載 Gemma 4 模型
+- 安裝 OpenCode
+- 在 `~/.local/bin` 建立 `gemma4-agent` 啟動器
+
+如果 `llama.cpp` 的壓縮檔已經存在於快取中，bootstrap 會跳過下載，直接執行解壓。
+
+安裝完成後，可直接執行：
+
+```bash
+gemma4-agent
+```
+
+在 Windows 上，啟動器 shim 會建立在：
+
+```text
+%USERPROFILE%\.local\bin\gemma4-agent.cmd
+```
+
+### 2. 開發者模式：手動編譯 llama.cpp
 
 ```bash
 cd llama.cpp
@@ -42,13 +77,13 @@ cmake -B build -DLLAMA_CURL=ON
 cmake --build build --config Release
 ```
 
-### 2. 安裝 OpenCode
+### 3. 安裝 OpenCode
 
 ```bash
 npm i -g opencode-ai
 ```
 
-### 3. 安裝依賴並啟動
+### 4. 安裝依賴並啟動
 
 ```bash
 npm install
@@ -62,6 +97,12 @@ npm run dev
 ```bash
 # 啟動 agent
 npm run dev
+
+# 使用預設的 Unsloth GGUF
+npm run dev
+
+# 改用 Bartowski 的 GGUF
+npm run dev -- --model-source bartowski
 
 # 只下載模型
 npm run dev -- --download-only

@@ -1,0 +1,350 @@
+ Gemma 4 Coding Agent 實作計劃
+
+ Context
+
+ 用戶希望構建一個基於 Gemma 4 的 coding agent，要求：
+ - 跨平台（Windows/macOS/Linux）
+ - 單一執行檔
+ - 自動偵測 GPU/CPU
+ - 完整 Agent 功能（檔案操作、終端命令、工具調用）
+
+ 經過研究，發現最佳方案是基於 OpenCode 修改，配合 llama.cpp 運行 Gemma 4。
+
+ ---
+ 為什麼選擇 OpenCode + llama.cpp
+
+ ┌─────────────┬──────────────────────────────────────────────────────────┬──────────────────────────────────────────┐
+ │    方案     │                           優點                           │                   缺點                   │
+ ├─────────────┼──────────────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ │ OpenCode ✅ │ 已有 Gemma 4 兼容 PR、TypeScript 易修改、完整 agent 功能 │ 需要 fork 並維護                         │
+ ├─────────────┼──────────────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ │ Codex CLI   │ 官方支援、Rust 效能好                                    │ Rust 修改難度高、tool calling 格式不兼容 │
+ ├─────────────┼──────────────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ │ open-codex  │ Python 易懂                                              │ 功能太簡單（只有 shell 命令）            │
+ ├─────────────┼──────────────────────────────────────────────────────────┼──────────────────────────────────────────┤
+ │ 從零開始    │ 完全可控                                                 │ 工作量大                                 │
+ └─────────────┴──────────────────────────────────────────────────────────┴──────────────────────────────────────────┘
+
+ 關鍵技術發現
+
+ 1. Ollama v0.20.0 的 Gemma 4 tool calling 壞掉了 - 必須用 llama.cpp
+ 2. OpenCode PR #16531 加入了 toolParser 兼容層，可處理 Gemma 4 的非標準回應
+ 3. Gemma 4 使用 6 個特殊 tokens 進行 tool calling，與 OpenAI 格式不同
+
+ ---
+ 實作方案
+
+ 架構總覽
+
+ ┌─────────────────────────────────────────────────────────────┐
+ │              gemma4-agent (單一執行檔)                       │
+ ├─────────────────────────────────────────────────────────────┤
+ │  OpenCode Fork (TypeScript)                                  │
+ │  - toolParser 兼容層（處理 Gemma 4 格式）                     │
+ │  - MCP 工具整合                                              │
+ ├─────────────────────────────────────────────────────────────┤
+ │  內嵌 llama.cpp server                                       │
+ │  - 自動偵測 CUDA/Metal/CPU                                   │
+ │  - --jinja flag 啟用 Gemma 4 模板                           │
+ ├─────────────────────────────────────────────────────────────┤
+ │  模型管理器                                                  │
+ │  - 首次運行下載 GGUF 模型                                    │
+ │  - HuggingFace Hub 整合                                      │
+ └─────────────────────────────────────────────────────────────┘
+
+ ---
+ Phase 1: 環境準備與 Fork（1-2 天）
+
+ 1.1 Fork OpenCode
+
+ git clone https://github.com/anomalyco/opencode.git
+ cd opencode
+ gh pr checkout 16531  # 獲取 toolParser 兼容層
+
+ 1.2 編譯 llama.cpp
+
+ git clone https://github.com/ggml-org/llama.cpp.git
+ cd llama.cpp
+ # 修復 Gemma 4 tool calling
+ git fetch origin pull/21343/head:pr-21343
+ git cherry-pick pr-21343 --no-commit
+
+ # Windows (CUDA)
+ cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=ON
+ cmake --build build --config Release
+
+ # macOS (Metal)
+ cmake -B build -DGGML_METAL=ON -DLLAMA_CURL=ON
+ cmake --build build --config Release
+
+ # Linux (CUDA)
+ cmake -B build -DGGML_CUDA=ON -DLLAMA_CURL=ON
+ cmake --build build --config Release
+
+ 關鍵檔案：
+ - llama.cpp/build/bin/llama-server (或 .exe)
+
+ ---
+ Phase 2: 整合與配置（2-3 天）
+
+ 2.1 建立 Launcher 腳本
+
+ 建立 src/launcher.ts 來：
+ 1. 偵測硬體（CUDA/Metal/CPU）
+ 2. 檢查/下載模型
+ 3. 啟動 llama-server
+ 4. 啟動 OpenCode 連接到 llama-server
+
+ 2.2 模型配置
+
+ 推薦模型：
+ - ggml-org/gemma-4-E4B-it-GGUF:Q4_K_M (~5.4GB)
+ - 備選: ggml-org/gemma-4-26B-A4B-it-GGUF:Q4_K_M (~17GB)
+
+ 配置檔案 opencode.json：
+ {
+   "provider": {
+     "gemma4": {
+       "npm": "@ai-sdk/openai-compatible",
+       "name": "Gemma 4 (local)",
+       "options": {
+         "baseURL": "http://127.0.0.1:8089/v1",
+         "toolParser": [
+           { "type": "raw-function-call" },
+           { "type": "json" }
+         ]
+       },
+       "models": {
+         "gemma4-e4b": {
+           "name": "Gemma 4 E4B",
+           "tool_call": true,
+           "limit": { "context": 32768, "output": 8192 }
+         }
+       }
+     }
+   },
+   "model": "gemma4/gemma4-e4b"
+ }
+
+ 2.3 硬體偵測邏輯
+
+ // src/hardware.ts
+ export function detectBackend(): 'cuda' | 'metal' | 'cpu' {
+   if (process.platform === 'darwin' && process.arch === 'arm64') {
+     return 'metal';
+   }
+
+   // 檢查 nvidia-smi
+   try {
+     execSync('nvidia-smi', { stdio: 'ignore' });
+     return 'cuda';
+   } catch {
+     return 'cpu';
+   }
+ }
+
+ 關鍵檔案：
+ - src/launcher.ts
+ - src/hardware.ts
+ - opencode.json
+
+ ---
+ Phase 3: 模型管理（1-2 天）
+
+ 3.1 自動下載模型
+
+ // src/model-manager.ts
+ import { downloadFile } from "@huggingface/hub";
+
+ const MODEL_REPO = "ggml-org/gemma-4-E4B-it-GGUF";
+ const MODEL_FILE = "gemma-4-E4B-it-Q4_K_M.gguf";
+
+ export async function ensureModel(): Promise<string> {
+   const cacheDir = getCacheDir(); // 平台特定快取目錄
+   const modelPath = path.join(cacheDir, MODEL_FILE);
+
+   if (!fs.existsSync(modelPath)) {
+     console.log("首次運行，正在下載模型...");
+     await downloadFile({
+       repo: MODEL_REPO,
+       path: MODEL_FILE,
+       localDir: cacheDir,
+     });
+   }
+
+   return modelPath;
+ }
+
+ 3.2 快取目錄
+
+ ┌─────────┬───────────────────────────────────────┐
+ │  平台   │                 路徑                  │
+ ├─────────┼───────────────────────────────────────┤
+ │ Windows │ %LOCALAPPDATA%\gemma4-agent\models\   │
+ ├─────────┼───────────────────────────────────────┤
+ │ macOS   │ ~/Library/Caches/gemma4-agent/models/ │
+ ├─────────┼───────────────────────────────────────┤
+ │ Linux   │ ~/.cache/gemma4-agent/models/         │
+ └─────────┴───────────────────────────────────────┘
+
+ 關鍵檔案：
+ - src/model-manager.ts
+
+ ---
+ Phase 4: 打包（2-3 天）
+
+ 4.1 打包策略
+
+ 使用 pkg 或 nexe 打包 Node.js 應用，並附帶預編譯的 llama-server。
+
+ 打包矩陣：
+ gemma4-agent-windows-cuda.zip
+ ├── gemma4-agent.exe        (Node.js 打包)
+ └── llama-server.exe        (CUDA 版)
+
+ gemma4-agent-windows-cpu.zip
+ ├── gemma4-agent.exe
+ └── llama-server.exe        (CPU 版)
+
+ gemma4-agent-macos-arm64.tar.gz
+ ├── gemma4-agent            (Node.js 打包)
+ └── llama-server            (Metal 版)
+
+ gemma4-agent-linux-cuda.tar.gz
+ ├── gemma4-agent
+ └── llama-server            (CUDA 版)
+
+ 4.2 GitHub Actions CI
+
+ # .github/workflows/release.yml
+ name: Release
+ on:
+   push:
+     tags: ['v*']
+
+ jobs:
+   build-llama:
+     strategy:
+       matrix:
+         include:
+           - os: windows-latest
+             backend: cuda
+           - os: windows-latest
+             backend: cpu
+           - os: macos-14
+             backend: metal
+           - os: ubuntu-latest
+             backend: cuda
+     # ... 編譯 llama-server
+
+   build-agent:
+     needs: build-llama
+     # ... 用 pkg 打包 Node.js 應用
+
+   release:
+     needs: build-agent
+     # ... 上傳到 GitHub Releases
+
+ 關鍵檔案：
+ - .github/workflows/release.yml
+ - package.json (pkg 配置)
+
+ ---
+ Phase 5: 測試與文檔（1-2 天）
+
+ 5.1 測試項目
+
+ - Windows + CUDA 安裝與運行
+ - Windows + CPU 安裝與運行
+ - macOS Apple Silicon 安裝與運行
+ - Linux + CUDA 安裝與運行
+ - 模型自動下載
+ - Tool calling（檔案讀取、編輯、bash）
+ - 長對話上下文
+
+ 5.2 使用說明
+
+ # 下載並解壓縮
+ # Windows
+ gemma4-agent.exe
+
+ # macOS/Linux
+ ./gemma4-agent
+
+ 首次運行會自動下載模型（約 5.4GB）。
+
+ ---
+ 專案結構
+
+ gemma4-agent/
+ ├── src/
+ │   ├── launcher.ts          # 主入口
+ │   ├── hardware.ts          # 硬體偵測
+ │   ├── model-manager.ts     # 模型下載管理
+ │   └── opencode/            # Fork 的 OpenCode 源碼
+ ├── llama-builds/            # 預編譯的 llama-server
+ │   ├── windows-cuda/
+ │   ├── windows-cpu/
+ │   ├── macos-metal/
+ │   └── linux-cuda/
+ ├── .github/workflows/
+ │   └── release.yml
+ ├── package.json
+ ├── tsconfig.json
+ └── README.md
+
+ ---
+ 風險與緩解
+
+ ┌──────────────────────────┬────────────────────────────────────────────┐
+ │           風險           │                  緩解措施                  │
+ ├──────────────────────────┼────────────────────────────────────────────┤
+ │ Ollama 修復 tool calling │ 監控 ollama/ollama#15241，修復後可簡化架構 │
+ ├──────────────────────────┼────────────────────────────────────────────┤
+ │ llama.cpp PR 未合併      │ 維護自己的 fork，cherry-pick 修復          │
+ ├──────────────────────────┼────────────────────────────────────────────┤
+ │ 打包體積過大             │ llama-server ~50MB，可接受；模型單獨下載   │
+ ├──────────────────────────┼────────────────────────────────────────────┤
+ │ 模型下載失敗             │ 支援斷點續傳，提供手動下載指引             │
+ └──────────────────────────┴────────────────────────────────────────────┘
+
+ ---
+ 時程估計
+
+ ┌───────┬────────────────────────────────┬─────────┐
+ │ Phase │            工作項目            │  時間   │
+ ├───────┼────────────────────────────────┼─────────┤
+ │ 1     │ Fork OpenCode + 編譯 llama.cpp │ 1-2 天  │
+ ├───────┼────────────────────────────────┼─────────┤
+ │ 2     │ 整合與配置                     │ 2-3 天  │
+ ├───────┼────────────────────────────────┼─────────┤
+ │ 3     │ 模型管理                       │ 1-2 天  │
+ ├───────┼────────────────────────────────┼─────────┤
+ │ 4     │ 打包                           │ 2-3 天  │
+ ├───────┼────────────────────────────────┼─────────┤
+ │ 5     │ 測試與文檔                     │ 1-2 天  │
+ ├───────┼────────────────────────────────┼─────────┤
+ │ 總計  │                                │ 7-12 天 │
+ └───────┴────────────────────────────────┴─────────┘
+
+ ---
+ 驗證方式
+
+ 1. 基本運行測試
+ ./gemma4-agent
+ > 讀取 package.json 的內容
+ 2. Tool calling 測試
+ > 建立一個新檔案 hello.py，內容是 print hello world
+ > 執行這個檔案
+ 3. 長對話測試
+   - 進行 10+ 輪對話
+   - 確認上下文保持正確
+
+ ---
+ 參考資源
+
+ - https://github.com/anomalyco/opencode
+ - https://github.com/anomalyco/opencode/pull/16531
+ - https://github.com/ggml-org/llama.cpp/pull/21343
+ - https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4
+ - https://gist.github.com/daniel-farina/87dc1c394b94e45bb700d27e9ea03193

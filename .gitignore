@@ -1,0 +1,45 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+*.exe
+*.out
+*.tmp
+
+# TypeScript
+*.tsbuildinfo
+
+# Local model and binary artifacts
+*.gguf
+*.zip
+llama.cpp/build/
+llama/
+
+# Python / captured assets
+__pycache__/
+*.pyc
+captured_image.jpg
+
+# Local tool state
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*

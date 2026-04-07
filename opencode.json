@@ -10,7 +10,11 @@
           "id": "google_gemma-4-E4B-it-Q4_K_M",
           "name": "Gemma 4 E4B",
           "release_date": "2026-04-02",
-          "attachment": false,
+          "attachment": true,
+          "modalities": {
+            "input": ["text", "image", "pdf"],
+            "output": ["text"]
+          },
           "reasoning": false,
           "temperature": true,
           "tool_call": true,
@@ -28,7 +32,11 @@
           "id": "gemma4-27b",
           "name": "Gemma 4 27B",
           "release_date": "2026-04-02",
-          "attachment": false,
+          "attachment": true,
+          "modalities": {
+            "input": ["text", "image", "pdf"],
+            "output": ["text"]
+          },
           "reasoning": true,
           "temperature": true,
           "tool_call": true,

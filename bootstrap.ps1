@@ -32,6 +32,7 @@ $CUDA_VERSION = "13.1"
 $LLAMA_RELEASE_URL = "https://github.com/ggml-org/llama.cpp/releases/download/$LLAMA_VERSION"
 $MODEL_REPO = "unsloth/gemma-4-E4B-it-GGUF"
 $MODEL_FILE = "gemma-4-E4B-it-Q4_K_M.gguf"
+$MMPROJ_FILE = "mmproj-F16.gguf"
 
 # Colors
 function Write-Info { Write-Host "[INFO] $args" -ForegroundColor Cyan }
@@ -168,6 +169,29 @@ function Install-Model {
     Write-Success "Model downloaded"
 }
 
+function Install-Mmproj {
+    param([string]$InstallDir)
+
+    $modelDir = Join-Path $InstallDir "models"
+    $mmprojPath = Join-Path $modelDir $MMPROJ_FILE
+
+    New-Item -ItemType Directory -Force -Path $modelDir | Out-Null
+
+    if (Test-Path $mmprojPath) {
+        Write-Success "Vision projector already exists: $mmprojPath"
+        return
+    }
+
+    Write-Info "Downloading Gemma 4 vision projector..."
+    Write-Host "   Repository: $MODEL_REPO"
+    Write-Host "   File: $MMPROJ_FILE"
+
+    $url = "https://huggingface.co/$MODEL_REPO/resolve/main/$MMPROJ_FILE"
+    & curl -L -o $mmprojPath --progress-bar $url
+
+    Write-Success "Vision projector downloaded"
+}
+
 # Install OpenCode
 function Install-OpenCode {
     if (Test-Command "opencode") {
@@ -206,7 +230,11 @@ function Set-OpenCodeConfig {
           "id": "google_gemma-4-E4B-it-Q4_K_M",
           "name": "Gemma 4 E4B",
           "release_date": "2026-04-02",
-          "attachment": false,
+          "attachment": true,
+          "modalities": {
+            "input": ["text", "image", "pdf"],
+            "output": ["text"]
+          },
           "reasoning": false,
           "temperature": true,
           "tool_call": true,
@@ -247,6 +275,7 @@ setlocal
 set "BIN_DIR=$binDir"
 set "MODEL_DIR=$modelDir"
 set "MODEL_FILE=$MODEL_FILE"
+set "MMPROJ_FILE=$MMPROJ_FILE"
 set "PORT=8089"
 
 echo.
@@ -256,7 +285,7 @@ echo ========================================
 echo.
 
 echo Starting llama-server...
-start "" "%BIN_DIR%\llama-server.exe" -m "%MODEL_DIR%\%MODEL_FILE%" --port %PORT% -c 32768 --jinja $nglFlag
+start "" "%BIN_DIR%\llama-server.exe" -m "%MODEL_DIR%\%MODEL_FILE%" --mmproj "%MODEL_DIR%\%MMPROJ_FILE%" --port %PORT% -c 32768 --jinja $nglFlag
 
 echo Waiting for server to start...
 timeout /t 15 /nobreak > nul
@@ -338,6 +367,7 @@ function Main {
     if (-not $SkipModel) {
         Write-Host "Step 3/5: Downloading model..." -ForegroundColor Yellow
         Install-Model -InstallDir $installDir
+        Install-Mmproj -InstallDir $installDir
     } else {
         Write-Host "Step 3/5: Skipping model download..." -ForegroundColor Yellow
     }

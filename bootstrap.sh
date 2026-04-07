@@ -35,6 +35,7 @@ LLAMA_RELEASE_URL="https://github.com/ggml-org/llama.cpp/releases/download/${LLA
 CUDA_VERSION="13.1"
 MODEL_REPO="unsloth/gemma-4-E4B-it-GGUF"
 MODEL_FILE="gemma-4-E4B-it-Q4_K_M.gguf"
+MMPROJ_FILE="mmproj-F16.gguf"
 
 # Detect OS and architecture
 detect_os() {
@@ -234,6 +235,32 @@ download_model() {
     success "Model downloaded"
 }
 
+download_mmproj() {
+    local install_dir="$1"
+    local model_dir="${install_dir}/models"
+    local mmproj_path="${model_dir}/${MMPROJ_FILE}"
+
+    mkdir -p "$model_dir"
+
+    if [[ -f "$mmproj_path" ]]; then
+        success "Vision projector already exists: $mmproj_path"
+        return 0
+    fi
+
+    info "Downloading Gemma 4 vision projector..."
+    echo "   Repository: $MODEL_REPO"
+    echo "   File: $MMPROJ_FILE"
+
+    if check_command huggingface-cli; then
+        huggingface-cli download "$MODEL_REPO" "$MMPROJ_FILE" --local-dir "$model_dir"
+    else
+        local url="https://huggingface.co/${MODEL_REPO}/resolve/main/${MMPROJ_FILE}"
+        curl -L -o "$mmproj_path" --progress-bar "$url"
+    fi
+
+    success "Vision projector downloaded"
+}
+
 # Install OpenCode
 install_opencode() {
     if check_command opencode; then
@@ -270,7 +297,11 @@ configure_opencode() {
           "id": "google_gemma-4-E4B-it-Q4_K_M",
           "name": "Gemma 4 E4B",
           "release_date": "2026-04-02",
-          "attachment": false,
+          "attachment": true,
+          "modalities": {
+            "input": ["text", "image", "pdf"],
+            "output": ["text"]
+          },
           "reasoning": false,
           "temperature": true,
           "tool_call": true,
@@ -313,11 +344,12 @@ setlocal
 set "BIN_DIR=${bin_dir}"
 set "MODEL_DIR=${model_dir}"
 set "MODEL_FILE=${MODEL_FILE}"
+set "MMPROJ_FILE=${MMPROJ_FILE}"
 set "PORT=8089"
 
 echo Starting Gemma 4 Coding Agent...
 
-start "" "%BIN_DIR%\\${server_binary}" -m "%MODEL_DIR%\\%MODEL_FILE%" --port %PORT% -c 32768 --jinja -ngl 99
+start "" "%BIN_DIR%\\${server_binary}" -m "%MODEL_DIR%\\%MODEL_FILE%" --mmproj "%MODEL_DIR%\\%MMPROJ_FILE%" --port %PORT% -c 32768 --jinja -ngl 99
 
 timeout /t 10 /nobreak > nul
 
@@ -334,11 +366,12 @@ MODEL_DIR="${SCRIPT_DIR}/models"
 EOF
         cat >> "$launcher_path" << EOF
 MODEL_FILE="${MODEL_FILE}"
+MMPROJ_FILE="${MMPROJ_FILE}"
 PORT=8089
 
 echo "Starting Gemma 4 Coding Agent..."
 
-"\${BIN_DIR}/llama-server" -m "\${MODEL_DIR}/\${MODEL_FILE}" --port \${PORT} -c 32768 --jinja -ngl 99 &
+"\${BIN_DIR}/llama-server" -m "\${MODEL_DIR}/\${MODEL_FILE}" --mmproj "\${MODEL_DIR}/\${MMPROJ_FILE}" --port \${PORT} -c 32768 --jinja -ngl 99 &
 SERVER_PID=\$!
 
 cleanup() {
@@ -476,6 +509,7 @@ main() {
     # Step 3: Model
     echo "Step 3/5: Downloading model..."
     download_model "$install_dir"
+    download_mmproj "$install_dir"
     echo ""
 
     # Step 4: OpenCode

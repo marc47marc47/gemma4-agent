@@ -14,9 +14,9 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "npx tsc",
     "start": "node dist/launcher.js",
-    "dev": "tsx src/launcher.ts",
+    "dev": "npx tsx src/launcher.ts",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
     "release": "npm run build && npm publish",

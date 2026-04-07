@@ -284,11 +284,15 @@ echo   Gemma 4 Coding Agent
 echo ========================================
 echo.
 
+curl -fsS "http://127.0.0.1:%PORT%/health" >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+echo llama-server is already running on port %PORT%.
+) else (
 echo Starting llama-server...
 start "" "%BIN_DIR%\llama-server.exe" -m "%MODEL_DIR%\%MODEL_FILE%" --mmproj "%MODEL_DIR%\%MMPROJ_FILE%" --port %PORT% -c 32768 --jinja $nglFlag
-
 echo Waiting for server to start...
 timeout /t 15 /nobreak > nul
+)
 
 echo Starting OpenCode...
 opencode

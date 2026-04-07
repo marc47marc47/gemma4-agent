@@ -349,10 +349,17 @@ set "PORT=8089"
 
 echo Starting Gemma 4 Coding Agent...
 
-start "" "%BIN_DIR%\\${server_binary}" -m "%MODEL_DIR%\\%MODEL_FILE%" --mmproj "%MODEL_DIR%\\%MMPROJ_FILE%" --port %PORT% -c 32768 --jinja -ngl 99
+curl -fsS "http://127.0.0.1:%PORT%/health" >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    echo llama-server is already running on port %PORT%.
+) else (
+    echo Starting llama-server...
+    start "" "%BIN_DIR%\\${server_binary}" -m "%MODEL_DIR%\\%MODEL_FILE%" --mmproj "%MODEL_DIR%\\%MMPROJ_FILE%" --port %PORT% -c 32768 --jinja -ngl 99
+    echo Waiting for server to start...
+    timeout /t 10 /nobreak > nul
+)
 
-timeout /t 10 /nobreak > nul
-
+echo Starting OpenCode...
 opencode
 
 endlocal
@@ -371,18 +378,27 @@ PORT=8089
 
 echo "Starting Gemma 4 Coding Agent..."
 
-"\${BIN_DIR}/llama-server" -m "\${MODEL_DIR}/\${MODEL_FILE}" --mmproj "\${MODEL_DIR}/\${MMPROJ_FILE}" --port \${PORT} -c 32768 --jinja -ngl 99 &
-SERVER_PID=\$!
+SERVER_STARTED=0
+
+if curl -fsS "http://127.0.0.1:\${PORT}/health" >/dev/null 2>&1; then
+    echo "llama-server is already running on port \${PORT}."
+else
+    echo "Starting llama-server..."
+    "\${BIN_DIR}/llama-server" -m "\${MODEL_DIR}/\${MODEL_FILE}" --mmproj "\${MODEL_DIR}/\${MMPROJ_FILE}" --port \${PORT} -c 32768 --jinja -ngl 99 &
+    SERVER_PID=\$!
+    SERVER_STARTED=1
+    sleep 10
+fi
 
 cleanup() {
     echo "Shutting down..."
-    kill \$SERVER_PID 2>/dev/null
+    if [[ "\${SERVER_STARTED}" -eq 1 ]]; then
+        kill \$SERVER_PID 2>/dev/null
+    fi
     exit 0
 }
 
 trap cleanup SIGINT SIGTERM
-
-sleep 10
 
 opencode
 
